@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Sessions & credentials
+wa-session/
+ig_session.json
+.env
+
+# Temporary files
+temp/
+*.log
+
+# System files
+.DS_Store
+Thumbs.db

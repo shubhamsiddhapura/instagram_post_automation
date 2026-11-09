@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  momaidham-bot:
+    build: .
+    container_name: momaidham-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./wa-session:/app/wa-session
+      - ./ig_session.json:/app/ig_session.json
+      - ./temp:/app/temp
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
