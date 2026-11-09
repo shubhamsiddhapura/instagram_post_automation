@@ -31,6 +31,23 @@ function extractNumericGroupId(jid?: string | null): string {
   return jid.replace(/@.*$/, '').replace(/:.*$/, '').trim();
 }
 
+function getISTTime(date: Date): { hours: number; minutes: number; timeInMinutes: number; timeStr: string } {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(date);
+  const hourPart = parts.find(p => p.type === 'hour')?.value || '0';
+  const minutePart = parts.find(p => p.type === 'minute')?.value || '0';
+  const hours = parseInt(hourPart, 10) % 24;
+  const minutes = parseInt(minutePart, 10);
+  const timeInMinutes = hours * 60 + minutes;
+  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} IST`;
+  return { hours, minutes, timeInMinutes, timeStr };
+}
+
 export class WhatsAppClient {
   private _sock: WASocket | null = null;
   private _isReady = false;
@@ -192,7 +209,9 @@ export class WhatsAppClient {
     // 3. Strictly match the incoming group with the configured target group.
     const incomingGroupId = extractNumericGroupId(remoteJid);
     if (incomingGroupId !== targetGroupId) {
-      // Silently ignore messages from all other groups
+      if (isImageMessage(msg.message)) {
+        logger.info(`🚫 Ignoring image from non-target group (ID: ${incomingGroupId}). Only accepting from "${targetGroupId}" (Shree Momaidham Mandir).`);
+      }
       return;
     }
 
@@ -201,19 +220,16 @@ export class WhatsAppClient {
       return;
     }
 
-    // 5. Daily Darshan Time Window Check (Strictly 6:00 AM to 12:00 PM):
+    // 5. Daily Darshan Time Window Check (Strictly 6:00 AM to 12:00 PM IST):
     const msgTimestampSeconds = Number(msg.messageTimestamp || Math.floor(Date.now() / 1000));
     const msgDate = new Date(msgTimestampSeconds * 1000);
-    const msgHours = msgDate.getHours();
-    const msgMinutes = msgDate.getMinutes();
-    const timeInMinutes = msgHours * 60 + msgMinutes;
+    const { timeInMinutes, timeStr } = getISTTime(msgDate);
 
-    const startMinutes = config.darshanStartHour * 60; // 6:00 AM = 360
-    const endMinutes = config.darshanEndHour * 60;     // 12:00 PM = 720
+    const startMinutes = config.darshanStartHour * 60; // 6:00 AM IST = 360
+    const endMinutes = config.darshanEndHour * 60;     // 12:00 PM IST = 720
 
     if (timeInMinutes < startMinutes || timeInMinutes > endMinutes) {
-      const timeStr = msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      logger.warn(`⏰ Image received at ${timeStr}, which is OUTSIDE the allowed Darshan window (${config.darshanStartHour}:00 AM - ${config.darshanEndHour}:00 PM). Skipping upload.`);
+      logger.warn(`⏰ Image received at ${timeStr}, which is OUTSIDE the allowed Darshan window (${config.darshanStartHour}:00 AM - ${config.darshanEndHour}:00 PM IST). Skipping upload.`);
       return;
     }
 

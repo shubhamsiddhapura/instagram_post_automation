@@ -34,6 +34,23 @@ function extractNumericGroupId(jid?: string | null): string {
   return jid.replace(/@.*$/, '').replace(/:.*$/, '').trim();
 }
 
+function getISTTime(date: Date): { hours: number; minutes: number; timeInMinutes: number; timeStr: string } {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(date);
+  const hourPart = parts.find(p => p.type === 'hour')?.value || '0';
+  const minutePart = parts.find(p => p.type === 'minute')?.value || '0';
+  const hours = parseInt(hourPart, 10) % 24;
+  const minutes = parseInt(minutePart, 10);
+  const timeInMinutes = hours * 60 + minutes;
+  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} IST`;
+  return { hours, minutes, timeInMinutes, timeStr };
+}
+
 async function run(): Promise<void> {
   console.log('\n======================================================');
   console.log('       🌺 MomaiDham: Post Last Image to Instagram 🌺     ');
@@ -143,13 +160,13 @@ async function run(): Promise<void> {
   const msgDate = new Date(Number(latest.messageTimestamp) * 1000);
   logger.success(`📸 Found latest image from group! Timestamp: ${msgDate.toLocaleString()}`);
 
-  // Enforce 6:00 AM - 12:00 PM time window
-  const timeMinutes = msgDate.getHours() * 60 + msgDate.getMinutes();
-  const startMinutes = config.darshanStartHour * 60;
-  const endMinutes = config.darshanEndHour * 60;
+  // Enforce 6:00 AM - 12:00 PM IST time window
+  const { timeInMinutes, timeStr } = getISTTime(msgDate);
+  const startMinutes = config.darshanStartHour * 60; // 6:00 AM IST = 360
+  const endMinutes = config.darshanEndHour * 60;     // 12:00 PM IST = 720
 
-  if (timeMinutes < startMinutes || timeMinutes > endMinutes) {
-    logger.warn(`⚠️ Image was sent at ${msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, which is outside the morning darshan window (${config.darshanStartHour}:00 AM - ${config.darshanEndHour}:00 PM).`);
+  if (timeInMinutes < startMinutes || timeInMinutes > endMinutes) {
+    logger.warn(`⚠️ Image was sent at ${timeStr}, which is outside the morning darshan window (${config.darshanStartHour}:00 AM - ${config.darshanEndHour}:00 PM IST).`);
     logger.warn('Skipping automated upload to respect the daily darshan schedule.');
     sock.end(undefined);
     process.exit(0);
