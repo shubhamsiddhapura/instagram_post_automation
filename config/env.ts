@@ -62,8 +62,8 @@ const config: AppConfig = {
   enableAutoUpload: (process.env.ENABLE_AUTO_UPLOAD || 'false').toLowerCase() === 'true',
   deleteTempAfterUpload: (process.env.DELETE_TEMP_AFTER_UPLOAD || 'false').toLowerCase() === 'true',
 
-  // Daily morning darshan allowed time window (default 6:00 AM to 12:00 PM)
-  darshanStartHour: parseInt(process.env.DARSHAN_START_HOUR || '6', 10),
+  // Daily morning darshan allowed time window (default 5:00 AM to 12:00 PM)
+  darshanStartHour: parseInt(process.env.DARSHAN_START_HOUR || '5', 10),
   darshanEndHour: parseInt(process.env.DARSHAN_END_HOUR || '12', 10),
 
   // Directories

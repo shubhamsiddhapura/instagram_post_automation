@@ -15,7 +15,7 @@ services:
       - key: ENABLE_AUTO_UPLOAD
         value: "true"
       - key: DARSHAN_START_HOUR
-        value: "6"
+        value: "5"
       - key: DARSHAN_END_HOUR
         value: "12"
       - key: REEL_DURATION

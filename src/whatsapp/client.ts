@@ -53,6 +53,7 @@ export class WhatsAppClient {
   private _isReady = false;
   private _isReconnecting = false;
   private _groups = new Map<string, string>();
+  private _processedMessageIds = new Set<string>();
 
   /**
    * Initializes Baileys connection and starts event listening.
@@ -137,10 +138,15 @@ export class WhatsAppClient {
         }
       });
 
-      // Listen for incoming messages
-      this._sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
+      // Listen for incoming messages (both real-time and synced)
+      this._sock.ev.on('messages.upsert', async ({ messages }) => {
+        for (const msg of messages) {
+          await this._handleIncomingMessage(msg);
+        }
+      });
 
+      // Listen for history sync (e.g. if container restarted or reconnected during morning window)
+      this._sock.ev.on('messaging-history.set', async ({ messages }) => {
         for (const msg of messages) {
           await this._handleIncomingMessage(msg);
         }
@@ -163,21 +169,25 @@ export class WhatsAppClient {
       const groups = await this._sock.groupFetchAllParticipating();
       this._groups.clear();
 
+      const allowedGroupIds = config.targetGroupJid
+        .split(',')
+        .map(id => extractNumericGroupId(id))
+        .filter(Boolean);
+
       logger.info('--- Connected WhatsApp Groups ---');
       for (const [id, group] of Object.entries(groups)) {
         this._groups.set(id, group.subject);
-        const isTarget = config.targetGroupJid && config.targetGroupJid === id;
+        const isTarget = allowedGroupIds.includes(extractNumericGroupId(id));
         const tag = isTarget ? '🎯 [TARGET GROUP]' : '  ';
         logger.info(`${tag} "${group.subject}" -> ID: ${id}`);
       }
       logger.info('---------------------------------');
 
-      if (!config.targetGroupJid) {
+      if (allowedGroupIds.length === 0) {
         logger.warn('⚠️ TARGET_WHATSAPP_GROUP_JID is empty in .env.');
-        logger.warn('Images from ANY group will be processed, or you can paste one of the group IDs above into .env!');
       } else {
-        const groupName = this._groups.get(config.targetGroupJid) || 'Unknown Group';
-        logger.success(`🎯 Actively monitoring group: "${groupName}" (${config.targetGroupJid})`);
+        const targetNames = allowedGroupIds.map(id => `"${this._groups.get(id + '@g.us') || this._groups.get(id) || id}"`).join(', ');
+        logger.success(`🎯 Actively monitoring target group(s): ${targetNames} (${config.targetGroupJid})`);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -195,22 +205,32 @@ export class WhatsAppClient {
     const remoteJid = msg.key.remoteJid;
     if (!remoteJid) return;
 
+    // 0. Deduplication check
+    const msgId = msg.key.id;
+    if (msgId && this._processedMessageIds.has(msgId)) {
+      return;
+    }
+
     // 1. Must be a WhatsApp group (@g.us). Never process private chats, status broadcasts, or channels!
     if (!remoteJid.endsWith('@g.us')) return;
 
     // 2. Strict Target Group Enforcement:
-    // If TARGET_WHATSAPP_GROUP_JID is not configured, BLOCK all incoming messages.
-    const targetGroupId = extractNumericGroupId(config.targetGroupJid);
-    if (!targetGroupId) {
+    // Supports multiple comma-separated groups (e.g. both Shree Momaidham Mandir groups)
+    const allowedGroupIds = config.targetGroupJid
+      .split(',')
+      .map(id => extractNumericGroupId(id))
+      .filter(Boolean);
+
+    if (allowedGroupIds.length === 0) {
       logger.error('❌ SAFETY BLOCK: TARGET_WHATSAPP_GROUP_JID is not configured in .env! Refusing to process messages.');
       return;
     }
 
-    // 3. Strictly match the incoming group with the configured target group.
+    // 3. Strictly match the incoming group with the configured target groups.
     const incomingGroupId = extractNumericGroupId(remoteJid);
-    if (incomingGroupId !== targetGroupId) {
+    if (!allowedGroupIds.includes(incomingGroupId)) {
       if (isImageMessage(msg.message)) {
-        logger.info(`🚫 Ignoring image from non-target group (ID: ${incomingGroupId}). Only accepting from "${targetGroupId}" (Shree Momaidham Mandir).`);
+        logger.info(`🚫 Ignoring image from non-target group (ID: ${incomingGroupId}). Only accepting from: ${allowedGroupIds.join(', ')}.`);
       }
       return;
     }
@@ -220,12 +240,18 @@ export class WhatsAppClient {
       return;
     }
 
-    // 5. Daily Darshan Time Window Check (Strictly 6:00 AM to 12:00 PM IST):
+    // 5. Must be from TODAY in IST (so old history sync messages aren't re-processed)
     const msgTimestampSeconds = Number(msg.messageTimestamp || Math.floor(Date.now() / 1000));
     const msgDate = new Date(msgTimestampSeconds * 1000);
-    const { timeInMinutes, timeStr } = getISTTime(msgDate);
+    const nowIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const msgIST = msgDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    if (msgIST !== nowIST) {
+      return;
+    }
 
-    const startMinutes = config.darshanStartHour * 60; // 6:00 AM IST = 360
+    // 6. Daily Darshan Time Window Check (Strictly 5:00 AM to 12:00 PM IST):
+    const { timeInMinutes, timeStr } = getISTTime(msgDate);
+    const startMinutes = config.darshanStartHour * 60; // 5:00 AM IST = 300
     const endMinutes = config.darshanEndHour * 60;     // 12:00 PM IST = 720
 
     if (timeInMinutes < startMinutes || timeInMinutes > endMinutes) {
@@ -233,7 +259,11 @@ export class WhatsAppClient {
       return;
     }
 
-    const groupName = this._groups.get(remoteJid) || `Group ${targetGroupId}`;
+    if (msgId) {
+      this._processedMessageIds.add(msgId);
+    }
+
+    const groupName = this._groups.get(remoteJid) || `Group ${incomingGroupId}`;
     const sender = msg.key.participant || msg.pushName || 'Participant';
     const waCaption = getImageCaption(msg.message);
 
