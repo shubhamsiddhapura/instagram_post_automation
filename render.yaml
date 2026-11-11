@@ -17,7 +17,7 @@ services:
       - key: DARSHAN_START_HOUR
         value: "5"
       - key: DARSHAN_END_HOUR
-        value: "12"
+        value: "13"
       - key: REEL_DURATION
         value: "15"
       - key: DELETE_TEMP_AFTER_UPLOAD

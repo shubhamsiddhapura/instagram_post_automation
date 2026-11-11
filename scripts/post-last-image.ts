@@ -34,6 +34,18 @@ function extractNumericGroupId(jid?: string | null): string {
   return jid.replace(/@.*$/, '').replace(/:.*$/, '').trim();
 }
 
+function parseTimestampSeconds(ts: any): number {
+  if (!ts) return Math.floor(Date.now() / 1000);
+  if (typeof ts === 'number') return ts;
+  if (typeof ts.toNumber === 'function') {
+    try { return ts.toNumber(); } catch {}
+  }
+  if (typeof ts.low === 'number') return ts.low;
+  const n = Number(ts);
+  if (!isNaN(n) && n > 0) return n;
+  return Math.floor(Date.now() / 1000);
+}
+
 function getISTTime(date: Date): { hours: number; minutes: number; timeInMinutes: number; timeStr: string } {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Kolkata',
@@ -64,17 +76,25 @@ async function run(): Promise<void> {
     config.waSessionDir
   ]);
 
-  const targetGroupId = extractNumericGroupId(config.targetGroupJid);
-  if (!targetGroupId) {
+  const allowedGroupIds = config.targetGroupJid
+    .split(',')
+    .map(extractNumericGroupId)
+    .filter(Boolean);
+
+  if (allowedGroupIds.length === 0) {
     logger.error('TARGET_WHATSAPP_GROUP_JID is not set in .env! Run "npm run wa:scan" to find your group ID.');
     process.exit(1);
   }
 
-  logger.info(`Target Group: ${config.targetGroupJid} (ID: ${targetGroupId})`);
+  const isForce = process.argv.includes('--force');
+  logger.info(`Target Group(s): ${config.targetGroupJid} (IDs: ${allowedGroupIds.join(', ')})`);
   logger.info(`Instagram Account: @${config.instagramUsername}`);
+  if (isForce) {
+    logger.warn('⚡ --force mode enabled: Darshan time window check bypassed.');
+  }
 
   // Check if an image path was provided directly as an argument
-  const customImagePath = process.argv[2];
+  const customImagePath = process.argv.find(a => !a.startsWith('--') && a !== process.argv[0] && a !== process.argv[1]);
   if (customImagePath && fs.existsSync(customImagePath)) {
     logger.info(`Using provided image from path: ${customImagePath}`);
     await processAndUpload(customImagePath, 'આજના મંગળા દર્શન');
@@ -103,7 +123,7 @@ async function run(): Promise<void> {
     logger.info(`Received history sync with ${messages.length} message(s)...`);
     for (const m of messages) {
       const msgGroupId = extractNumericGroupId(m.key?.remoteJid);
-      if (msgGroupId === targetGroupId && isImageMessage(m.message)) {
+      if (allowedGroupIds.includes(msgGroupId) && isImageMessage(m.message)) {
         capturedImages.push(m);
       }
     }
@@ -113,7 +133,7 @@ async function run(): Promise<void> {
   sock.ev.on('messages.upsert', ({ messages }) => {
     for (const m of messages) {
       const msgGroupId = extractNumericGroupId(m.key?.remoteJid);
-      if (msgGroupId === targetGroupId && isImageMessage(m.message)) {
+      if (allowedGroupIds.includes(msgGroupId) && isImageMessage(m.message)) {
         capturedImages.push(m);
       }
     }
@@ -150,24 +170,25 @@ async function run(): Promise<void> {
 
   // Sort by timestamp descending (newest first)
   capturedImages.sort((a, b) => {
-    const tA = Number(a.messageTimestamp || 0);
-    const tB = Number(b.messageTimestamp || 0);
+    const tA = parseTimestampSeconds(a.messageTimestamp);
+    const tB = parseTimestampSeconds(b.messageTimestamp);
     return tB - tA;
   });
 
   const latest = capturedImages[0];
   const waCaption = getImageCaption(latest.message);
-  const msgDate = new Date(Number(latest.messageTimestamp) * 1000);
+  const msgTs = parseTimestampSeconds(latest.messageTimestamp);
+  const msgDate = new Date(msgTs * 1000);
   logger.success(`📸 Found latest image from group! Timestamp: ${msgDate.toLocaleString()}`);
 
-  // Enforce 6:00 AM - 12:00 PM IST time window
+  // Enforce 5:00 AM - 1:00 PM IST time window unless --force is passed
   const { timeInMinutes, timeStr } = getISTTime(msgDate);
-  const startMinutes = config.darshanStartHour * 60; // 6:00 AM IST = 360
-  const endMinutes = config.darshanEndHour * 60;     // 12:00 PM IST = 720
+  const startMinutes = config.darshanStartHour * 60;
+  const endMinutes = config.darshanEndHour * 60;
 
-  if (timeInMinutes < startMinutes || timeInMinutes > endMinutes) {
+  if (!isForce && (timeInMinutes < startMinutes || timeInMinutes > endMinutes)) {
     logger.warn(`⚠️ Image was sent at ${timeStr}, which is outside the morning darshan window (${config.darshanStartHour}:00 AM - ${config.darshanEndHour}:00 PM IST).`);
-    logger.warn('Skipping automated upload to respect the daily darshan schedule.');
+    logger.warn('💡 Tip: Pass --force to upload anyway: npm run post:last -- --force');
     sock.end(undefined);
     process.exit(0);
   }

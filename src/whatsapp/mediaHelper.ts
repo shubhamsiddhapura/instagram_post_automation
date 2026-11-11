@@ -48,7 +48,9 @@ export function isImageMessage(message?: proto.IMessage | null): boolean {
     message.ephemeralMessage?.message?.imageMessage ||
     message.viewOnceMessage?.message?.imageMessage ||
     message.viewOnceMessageV2?.message?.imageMessage ||
-    message.documentWithCaptionMessage?.message?.imageMessage
+    message.viewOnceMessageV2Extension?.message?.imageMessage ||
+    message.documentWithCaptionMessage?.message?.imageMessage ||
+    (message.documentMessage && message.documentMessage.mimetype?.startsWith('image/'))
   );
 }
 
@@ -60,6 +62,8 @@ export function getImageCaption(message?: proto.IMessage | null): string {
   return (
     message.imageMessage?.caption ||
     message.ephemeralMessage?.message?.imageMessage?.caption ||
+    message.documentWithCaptionMessage?.message?.imageMessage?.caption ||
+    message.documentMessage?.caption ||
     ''
   );
 }

@@ -31,6 +31,20 @@ function extractNumericGroupId(jid?: string | null): string {
   return jid.replace(/@.*$/, '').replace(/:.*$/, '').trim();
 }
 
+function parseTimestampSeconds(ts: any): number {
+  if (!ts) return Math.floor(Date.now() / 1000);
+  if (typeof ts === 'number') return ts;
+  if (typeof ts.toNumber === 'function') {
+    try {
+      return ts.toNumber();
+    } catch {}
+  }
+  if (typeof ts.low === 'number') return ts.low;
+  const n = Number(ts);
+  if (!isNaN(n) && n > 0) return n;
+  return Math.floor(Date.now() / 1000);
+}
+
 function getISTTime(date: Date): { hours: number; minutes: number; timeInMinutes: number; timeStr: string } {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Kolkata',
@@ -240,19 +254,20 @@ export class WhatsAppClient {
       return;
     }
 
-    // 5. Must be from TODAY in IST (so old history sync messages aren't re-processed)
-    const msgTimestampSeconds = Number(msg.messageTimestamp || Math.floor(Date.now() / 1000));
+    // 5. Parse timestamp safely (handles protobuf Long, number, and fallback)
+    const msgTimestampSeconds = parseTimestampSeconds(msg.messageTimestamp);
     const msgDate = new Date(msgTimestampSeconds * 1000);
     const nowIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const msgIST = msgDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     if (msgIST !== nowIST) {
+      logger.info(`ℹ️ Skipping image from earlier date: ${msgIST} (Current date: ${nowIST}).`);
       return;
     }
 
-    // 6. Daily Darshan Time Window Check (Strictly 5:00 AM to 12:00 PM IST):
+    // 6. Daily Darshan Time Window Check (Strictly 5:00 AM to 1:00 PM IST):
     const { timeInMinutes, timeStr } = getISTTime(msgDate);
     const startMinutes = config.darshanStartHour * 60; // 5:00 AM IST = 300
-    const endMinutes = config.darshanEndHour * 60;     // 12:00 PM IST = 720
+    const endMinutes = config.darshanEndHour * 60;     // 1:00 PM IST = 780 (default)
 
     if (timeInMinutes < startMinutes || timeInMinutes > endMinutes) {
       logger.warn(`⏰ Image received at ${timeStr}, which is OUTSIDE the allowed Darshan window (${config.darshanStartHour}:00 AM - ${config.darshanEndHour}:00 PM IST). Skipping upload.`);
