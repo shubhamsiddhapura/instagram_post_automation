@@ -1,194 +1,280 @@
-# 🌺 MomaiDham Automation: WhatsApp Group to Instagram Reels
+# 🌺 Shree MomaiDham: Automated WhatsApp to Instagram Reels Bot
 
-An automated system that listens to a designated **WhatsApp Group** for incoming darshan/puja photos, converts each photo into a vertical **9:16 Instagram Reel** with background music using **FFmpeg**, and publishes it to **Instagram Reels** with custom captions and hashtags.
-
----
-
-## 🏗️ Architecture & Workflow
-
-```
-   WhatsApp Group (Darshan Photo Received)
-                 │
-                 ▼
-       [Baileys Group Listener]
-                 │  - Detects image in target group
-                 │  - Downloads full-resolution media buffer
-                 ▼
-       [Sequential Job Queue]
-                 │  - Processes photos one by one
-                 │  - Built-in anti-spam cooldown between posts
-                 ▼
-      [FFmpeg Reel Video Engine]
-                 │  - Generates 9:16 vertical video (1080x1920)
-                 │  - Blurred background + centered photo layout
-                 │  - Attaches MP3 music with smooth audio fade-out
-                 ▼
-    [Direct Instagram Publisher (instagrapi)]
-                 │  - Direct login with session caching (no Facebook page needed!)
-                 │  - Formats caption & hashtags
-                 │  - Publishes directly to Instagram Reels
-                 ▼
-       🎉 Instagram Reel Published!
-```
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/TypeScript-5%2B-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FFmpeg-Video%20Engine-007808?style=for-the-badge&logo=ffmpeg&logoColor=white" alt="FFmpeg" />
+  <img src="https://img.shields.io/badge/WhatsApp-Auto%20Sync-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" alt="WhatsApp" />
+  <img src="https://img.shields.io/badge/Instagram-Reels%20Publisher-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Instagram" />
+  <img src="https://img.shields.io/badge/Cost-100%25%20Free-brightgreen?style=for-the-badge" alt="Free" />
+</p>
 
 ---
 
-## 📁 Project Structure
+## 💡 What Does This System Do? (In Simple Words)
+
+Every morning, temple devotees and priests post daily **Darshan (Pooja) photos** in a private WhatsApp group. 
+
+Normally, an admin would have to manually download the photo, open a video editing app, add the temple border/frame, find a devotional song, render a vertical video, write the Gujarati tithi/caption, and post it to Instagram Reels.
+
+**This bot does everything 100% automatically in under 60 seconds:**
 
 ```
-momaidham automation/
+1. 📸 Photo arrives in WhatsApp Group (Between 5:00 AM – 1:00 PM)
+   ⬇️
+2. 🤖 Bot downloads the photo automatically
+   ⬇️
+3. 🖼️ Centers the idol and places it inside the official temple frame
+   ⬇️
+4. 🎵 Finds and attaches today's official devotional song from Instagram
+   ⬇️
+5. 🎬 Generates a vertical 9:16 HD video (Reel) with smooth audio fade-out
+   ⬇️
+6. ✍️ Calculates today's Gujarati date & Hindu Tithi (e.g. કારતક સુદ છઠ)
+   ⬇️
+7. 🚀 Publishes the Reel directly to your Instagram account
+   ⬇️
+8. 📲 Replies back to the WhatsApp group with the direct link to the Reel!
+```
+
+---
+
+## 🎬 Visual Workflow
+
+```mermaid
+flowchart LR
+    A["📱 1. Photo Posted<br/>in WhatsApp Group"] --> B["📥 2. Bot Catches<br/>& Verifies Image"]
+    B --> C["🖼️ 3. Auto-Frames into<br/>Temple Template"]
+    C --> D["🎵 4. Attaches Official<br/>Instagram Music"]
+    D --> E["🎬 5. Renders 9:16<br/>Reel Video (FFmpeg)"]
+    E --> F["🚀 6. Uploads to<br/>Instagram Reels"]
+    F --> G["📲 7. Sends Reel link<br/>back to WhatsApp!"]
+```
+
+---
+
+## 🌟 Why is it Special?
+
+- 🆓 **100% Free**: Uses open-source tools. No paid WhatsApp Cloud API fees and no paid video editing software subscriptions.
+- 🎯 **Strictly Safe**: Only accepts photos from your specific WhatsApp group and only during morning darshan hours (5 AM - 1 PM). It completely ignores personal chats, other groups, or photos sent at night.
+- 🎶 **Real Instagram Music**: Unlike basic bots that upload muted videos or royalty-free elevator music, this bot links **real devotional songs directly from Instagram's official music library** so your Reel gets higher organic reach.
+- 🗓️ **Automatic Gujarati Panchang**: You never have to look up the Hindu calendar. The bot calculates the exact Gujarati Tithi (*સુદ / વદ*) automatically every morning.
+- 🛡️ **Anti-Ban Protection**: Built-in 20-second cooldown between posts to make sure Instagram never flags your account for spam.
+
+---
+
+## 🛠️ How It Works (Technology Breakdown)
+
+| Stage | What Happens | Which Technology Is Used? |
+| :--- | :--- | :--- |
+| **WhatsApp Connection** | Connects to your WhatsApp just like WhatsApp Web on your PC. Listens 24/7 for new messages. | **Node.js** + **Baileys** (`@whiskeysockets/baileys`) |
+| **Safety Filters** | Checks: 1) Is it from the allowed group? 2) Is it an image? 3) Is it today's date? 4) Is it morning (5 AM - 1 PM)? | **TypeScript logic** |
+| **Idol Detection & Framing** | Detects the red color of Mataji's canopy, cuts out side pillars, centers the deities, adds shadows, and places the photo inside the temple frame (`assets/template.png`). | **Python** + **Pillow (PIL)** + **NumPy** |
+| **Music Catalog Search** | Searches Instagram's music library for today's song (e.g., Tuesday: *Dakla*, Wednesday: *Garba*, Friday: *Lakshmi Maa*) and finds the best chorus highlight. | **Python** + **instagrapi** |
+| **Video Production** | Combines the framed image + background music into an HD vertical MP4 video (1080×1920) with a 1.5-second audio fade at the end. | **FFmpeg** (`fluent-ffmpeg`) |
+| **Instagram Upload** | Logs in securely using saved session cookies, sets the thumbnail, Gujarati caption, hashtags, and publishes the Reel. | **Python** + **instagrapi** |
+| **WhatsApp Notification** | Sends a confirmation message with the live Reel link back into the WhatsApp group. | **Baileys WhatsApp Client** |
+
+---
+
+## 📁 Project Directory (Where Files Live)
+
+```
+momaidham-automation/
 ├── assets/
-│   └── music/                  # Put your background .mp3 audio tracks here
+│   ├── template.png          # 🖼️ The temple frame (logo at top, address at bottom)
+│   └── music/                # 🎵 Backup MP3 songs (if internet search fails)
 ├── config/
-│   ├── env.js                  # Environment configuration & defaults
-│   ├── music.js                # Day-wise official Instagram music search queries (e.g. Friday: Lakshmi Maa)
-│   └── captions.js             # Gujarati caption generator (Date, Day, Year | Tithi, Jay Momai Ma, 5 viral hashtags)
-├── scripts/
-│   ├── scan-wa-qr.js           # Scan WhatsApp QR & discover group JIDs
-│   ├── search-insta-music.js   # Search Instagram's official music catalog
-│   ├── test-video.js           # Test Reel video generation locally
-│   └── test-pipeline.js        # Full dry-run pipeline test
+│   ├── env.ts                # ⚙️ Settings (Group ID, account names, time windows)
+│   ├── music.ts              # 🎶 Day-by-day song list (Monday, Tuesday, etc.)
+│   └── captions.ts           # ✍️ Gujarati calendar calculator & hashtag list
 ├── src/
-│   ├── index.js                # Main application entry point
-│   ├── instagram/
-│   │   ├── ig_bridge.py        # Python instagrapi engine for Reels upload & session management
-│   │   └── uploader.js         # Node.js wrapper for Instagram publishing
-│   ├── utils/
-│   │   ├── cleanup.js          # Temporary file management
-│   │   ├── logger.js           # Formatted console logger
-│   │   └── queue.js            # Sequential task queue with anti-rate-limit delay
-│   ├── video/
-│   │   └── reelGenerator.js    # FFmpeg 9:16 video renderer with blurred backdrop
-│   └── whatsapp/
-│       ├── client.js           # Baileys WhatsApp client & group listener
-│       └── mediaHelper.js      # Downloads and validates image messages
-├── .env.example                # Configuration template
-├── .env                        # Active credentials & settings
-├── package.json
-└── requirements.txt            # Python dependencies
+│   ├── index.ts              # 🚀 Main starter file (keeps the bot running 24/7)
+│   ├── whatsapp/             # 📱 WhatsApp connection and image downloader
+│   ├── video/                # 🎬 Video generator and image framing scripts
+│   ├── instagram/            # 📸 Instagram login and Reel uploader
+│   └── utils/                # ⏳ Anti-spam queue and temporary file cleanup
+├── .env                      # 🔑 Secret passwords and configuration
+├── package.json              # 📦 List of Node.js dependencies
+└── requirements.txt          # 🐍 List of Python dependencies
 ```
 
 ---
 
-## ⚡ Quick Setup Guide
+## 🚀 Easy Setup Guide (Step-by-Step)
 
-### Step 1: Install Dependencies
+### Step 1: Install Requirements
+Make sure your computer or server has:
+1. **Node.js 18+** → [Download Node.js](https://nodejs.org/)
+2. **Python 3.10+** → [Download Python](https://www.python.org/)
 
-#### Node.js packages:
+Then open your terminal or command prompt inside the project folder:
+
 ```bash
+# 1. Install Node.js tools
 npm install
-```
 
-#### Python packages (for Instagram publisher):
-```bash
+# 2. Install Python tools
 pip install -r requirements.txt
 ```
 
 ---
 
-### Step 2: Configure Environment Variables
+### Step 2: Configure Your Settings (`.env`)
 
-Open the `.env` file and configure your settings:
+Copy `.env.example` to create your `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` in any text editor (like Notepad or VS Code) and set your details:
 
 ```env
-# Target WhatsApp Group (Leave empty initially, or run "npm run wa:scan" to find it)
-TARGET_WHATSAPP_GROUP_JID=
-
-# Instagram Credentials
+# 1. Instagram login credentials
 INSTAGRAM_USERNAME=your_instagram_username
 INSTAGRAM_PASSWORD=your_instagram_password
 
-# Official Instagram Music search query (links official Instagram audio sticker to the Reel)
-# Examples: "Momai Maa", "Bhakti Song", "Mataji Na Garba", etc.
-IG_MUSIC_QUERY=Momai Maa
+# 2. Target WhatsApp Group (We will get this in Step 3)
+TARGET_WHATSAPP_GROUP_JID=
 
-# Set to "true" when you are ready to publish to Instagram live
-ENABLE_AUTO_UPLOAD=false
-
-# Reel Length in seconds
+# 3. Reel settings
 REEL_DURATION_SECONDS=15
+ENABLE_AUTO_UPLOAD=true
+
+# 4. Morning allowed window (5 AM to 1 PM IST)
+DARSHAN_START_HOUR=5
+DARSHAN_END_HOUR=13
 ```
 
 ---
 
-### Step 3: Gujarati Caption Template (`config/captions.js`)
-Captions are managed directly in [`config/captions.js`](config/captions.js) (not in `.env`). It automatically calculates the Hindu Panchang Tithi every day:
-```
-🗓️ 09/11/2026, સોમવાર | તિથિ: કાર્તક સુદ એકમ
+### Step 3: Connect WhatsApp
 
-🙏 જય મોમાઈ માં 🙏
-✨ શ્રી મોમાઈ ધામ - દર્શન ✨
-
-#momaidham #jaymomaima #reelsindia #trendingreels #viralreels
-```
-*(You can open and customize the text or hashtags in `config/captions.js` anytime).*
-
----
-
-### Step 4: Day-Wise Official Instagram Music (`config/music.js`)
-The bot automatically searches and attaches official songs from Instagram's Music catalog according to the day of the week!
-All queries are managed in [`config/music.js`](config/music.js) (not in `.env`):
-
-- **રવિવાર (Sunday)**: `Momai Maa`
-- **સોમવાર (Monday)**: `Mahadev Shiv Bhajan`
-- **મંગળવાર (Tuesday)**: `Hanumanji Bhajan`
-- **બુધવાર (Wednesday)**: `Ganesh Aarti Bhajan`
-- **ગુરુવાર (Thursday)**: `Mataji Na Garba`
-- **શુક્રવાર (Friday)**: `Lakshmi Maa Bhajan`
-- **શનિવાર (Saturday)**: `Hanuman Chalisa`
-
-You can test searching any day's song in Instagram's catalog:
-```bash
-npm run ig:music
-```
-*(You can open and customize these queries in `config/music.js` anytime).*
-
-*(Optional: You can also drop your own offline `.mp3` files into `assets/music/` as a local fallback).*
-
----
-
-### Step 4: Link WhatsApp & Find Your Group ID
-
-Run the WhatsApp discovery script:
+Run the WhatsApp connector:
 ```bash
 npm run wa:scan
 ```
-1. Scan the **QR Code** on your screen using your phone (**WhatsApp > Settings > Linked Devices > Link a Device**).
-2. Once connected, your joined groups will appear in your console:
+1. A **QR code** will appear directly in your terminal.
+2. Open **WhatsApp** on your phone → Tap **Settings** (or 3 dots) → **Linked Devices** → **Link a Device**.
+3. Scan the QR code with your phone.
+4. Now, list all your groups to find your group's unique ID:
+   ```bash
+   npm run wa:groups
    ```
-   --- Connected WhatsApp Groups ---
-     "Momai Dham Darshan Group" -> ID: 120363012345678901@g.us
-     "Family Group"             -> ID: 120363098765432109@g.us
-   ---------------------------------
+5. You will see an output like:
+   ```text
+   "Shree Momai Dham Darshan Group" -> ID: 120363012345678901@g.us
    ```
-3. Copy the ID of your target group and paste it into `TARGET_WHATSAPP_GROUP_JID` inside `.env`.
+6. Copy that ID and paste it into `TARGET_WHATSAPP_GROUP_JID` inside your `.env` file!
 
 ---
 
-### Step 5: Test Locally
+### Step 4: Connect Instagram
 
-Test the video generator without WhatsApp or Instagram:
+Run this command once to log in and save your session safely:
+```bash
+npm run ig:login
+```
+*(If your Instagram has 2FA enabled, it will ask you to type the 6-digit SMS code right in the terminal. Your login is saved in `ig_session.json` so you never have to log in again!)*
+
+---
+
+### Step 5: Test Everything Locally (Safe Mode)
+
+Before letting it run live, test if the video generation works on your computer:
+
 ```bash
 npm run test:video
 ```
-This generates a test video in `temp/videos/` with blurred background and audio so you can preview the quality on your computer.
+*Open `temp/videos/` on your computer. You will see a newly generated 15-second vertical Reel with audio!*
 
 ---
 
 ### Step 6: Start the Automation!
 
-Run:
+Whenever you want the bot running:
+
 ```bash
 npm start
 ```
-Whenever anyone posts a photo in the target WhatsApp group:
-1. The photo is downloaded automatically.
-2. An HD 9:16 Reel is produced.
-3. The Reel is posted to your Instagram account with the caption and hashtags!
+
+That's it! As soon as any priest or devotee shares a darshan photo in the WhatsApp group between 5:00 AM and 1:00 PM, the bot will automatically process it, post it to Instagram, and send the link back to the group.
 
 ---
 
-## 🛡️ Anti-Ban & Safety Features
-- **Sequential Queue (`src/utils/queue.js`)**: If multiple photos are sent at the same time in the group, they are queued and processed one-by-one with a 20-second safety delay to avoid Instagram spam triggers.
-- **Session Caching (`ig_session.json` & `wa-session/`)**: Sessions are persisted locally so you only authenticate once and avoid repetitive login attempts.
-- **Local Video Processing**: All FFmpeg processing happens locally on your machine with no external rendering API costs.
+## 🎶 How Music is Selected by Day of the Week
+
+You can customize the daily song search queries inside [`config/music.ts`](config/music.ts):
+
+| Day of Week | Gujarati Day | Song Search Query |
+| :--- | :--- | :--- |
+| **Sunday** | રવિવાર | `Momai Maa` |
+| **Monday** | સોમવાર | `Momai Maa Bhajan` |
+| **Tuesday** | મંગળવાર | `Mataji Dakla` |
+| **Wednesday** | બુધવાર | `Mataji Na Garba` |
+| **Thursday** | ગુરુવાર | `Momai Kuldevi` |
+| **Friday** | શુક્રવાર | `Lakshmi Maa Bhajan` |
+| **Saturday** | શનિવાર | `Mataji Na Garba` |
+
+---
+
+## ✍️ How Captions are Created
+
+Every morning, the caption is generated automatically inside [`config/captions.ts`](config/captions.ts) using real Hindu astronomical formulas:
+
+```text
+🗓️ 14/11/2026, શનિવાર | તિથિ: કારતક સુદ છઠ
+
+🙏 જય મોમાઈ માં 🙏
+✨ શ્રી મોમાઈ ધામ દર્શન ✨
+
+#momaidham #jaymomaima #reelsindia #trendingreels #viralreels
+```
+
+---
+
+## ⌨️ Helpful Commands List
+
+| Command | What It Does |
+| :--- | :--- |
+| `npm start` | Starts the bot in 24/7 listening mode. |
+| `npm run dev` | Starts the bot in development mode (auto-restarts on code edits). |
+| `npm run wa:scan` | Shows the WhatsApp QR code to link your phone. |
+| `npm run wa:groups` | Shows a list of all your WhatsApp groups and their IDs. |
+| `npm run ig:login` | Connects your Instagram account and saves the login session. |
+| `npm run ig:music` | Tests what song Instagram finds for today. |
+| `npm run test:video` | Creates a sample Reel video on your computer without uploading. |
+| `npm run post:last` | Manually downloads the latest photo from the group and posts it immediately. |
+
+---
+
+## ❓ Frequently Asked Questions (FAQ)
+
+#### Q1: Does this cost any money?
+**No.** All software used (Node.js, Python, FFmpeg, Baileys, Instagrapi) is 100% free and open-source.
+
+#### Q2: What if someone sends 4 or 5 photos at once?
+The bot has a built-in **Task Queue**. It never crashes your computer by rendering all of them at once. Instead, it processes them one-by-one, waiting 20 seconds between each post so Instagram doesn't flag your account for spam.
+
+#### Q3: What happens if someone sends a picture at night (e.g. 10:00 PM)?
+The bot checks the clock. If the photo arrived outside the allowed morning window (5:00 AM – 1:00 PM IST), it simply ignores it.
+
+#### Q4: What if someone posts a photo in another group or in a private chat?
+The bot will ignore it. It **strictly** only listens to the group ID specified in `TARGET_WHATSAPP_GROUP_JID`.
+
+#### Q5: Can I run this 24/7 on the cloud?
+Yes! The project includes a `Dockerfile` and `render.yaml`. You can deploy it to free cloud providers like **Render**. The bot includes a built-in `/ping` endpoint that works with free monitoring tools (like UptimeRobot) to keep it awake 24/7.
+
+---
+
+## 📜 License & Respect
+
+- This software is distributed under the **ISC License**.
+- Built with devotion for temple seva and community darshan automation.
+- *Disclaimer*: This project is not officially affiliated with or endorsed by WhatsApp, Meta, or Instagram. Use responsibly.
+
+<p align="center">
+  <b>🌺 જય શ્રી મોમાઈ માં 🌺</b>
+</p>
