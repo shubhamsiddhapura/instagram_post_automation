@@ -162,8 +162,28 @@ async function run(): Promise<void> {
   await new Promise((r) => setTimeout(r, 8000));
 
   if (capturedImages.length === 0) {
-    logger.warn('⚠️ No image was found in the recent history sync for this group.');
-    logger.info('👉 Please send/forward the darshan image into your WhatsApp group now, or run the bot with: npm start');
+    logger.info('⏳ No cached image in initial sync.');
+    logger.info('👉 Forward or send the darshan image into your WhatsApp group NOW! (Listening for 120 seconds...)');
+
+    await new Promise<void>((resolve) => {
+      const waitTimer = setTimeout(() => {
+        logger.warn('⏱️ Timed out waiting for image (120 seconds).');
+        resolve();
+      }, 120_000);
+
+      const checkInterval = setInterval(() => {
+        if (capturedImages.length > 0) {
+          clearTimeout(waitTimer);
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 1000);
+    });
+  }
+
+  if (capturedImages.length === 0) {
+    logger.warn('⚠️ No image was captured within the wait window.');
+    logger.info('💡 You can also post directly using an image file: npm run post:last -- "C:\\path\\to\\image.jpg"');
     sock.end(undefined);
     process.exit(0);
   }
