@@ -17,7 +17,7 @@ import Logger from '../utils/logger';
 import reelQueue from '../utils/queue';
 import { generateReelFromImage } from '../video/reelGenerator';
 import { frameDarshanImage } from '../video/imageFramer';
-import { generateReelCaption } from '../../config/captions';
+import { generateReelCaption, generateWhatsAppShareMessage } from '../../config/captions';
 import { getMusicQueryForDay } from '../../config/music';
 import { uploadReel, prepareOfficialTrack } from '../instagram/uploader';
 import { downloadWhatsAppImage, isImageMessage, getImageCaption } from './mediaHelper';
@@ -174,7 +174,7 @@ export class WhatsAppClient {
   }
 
   /**
-   * Loads all participating groups and prints them for reference.
+   * Loads all participating groups into memory.
    */
   private async _loadAndDisplayGroups(): Promise<void> {
     if (!this._sock) return;
@@ -183,19 +183,14 @@ export class WhatsAppClient {
       const groups = await this._sock.groupFetchAllParticipating();
       this._groups.clear();
 
+      for (const [id, group] of Object.entries(groups)) {
+        this._groups.set(id, group.subject);
+      }
+
       const allowedGroupIds = config.targetGroupJid
         .split(',')
         .map(id => extractNumericGroupId(id))
         .filter(Boolean);
-
-      logger.info('--- Connected WhatsApp Groups ---');
-      for (const [id, group] of Object.entries(groups)) {
-        this._groups.set(id, group.subject);
-        const isTarget = allowedGroupIds.includes(extractNumericGroupId(id));
-        const tag = isTarget ? '🎯 [TARGET GROUP]' : '  ';
-        logger.info(`${tag} "${group.subject}" -> ID: ${id}`);
-      }
-      logger.info('---------------------------------');
 
       if (allowedGroupIds.length === 0) {
         logger.warn('⚠️ TARGET_WHATSAPP_GROUP_JID is empty in .env.');
@@ -214,7 +209,7 @@ export class WhatsAppClient {
    */
   private async _handleIncomingMessage(msg: WAMessage): Promise<void> {
     if (!msg.message || !msg.key) return;
-    if (msg.key.fromMe) return; // Don't process our own messages
+   // if (msg.key.fromMe) return; // Don't process our own messages
 
     const remoteJid = msg.key.remoteJid;
     if (!remoteJid) return;
@@ -320,7 +315,17 @@ export class WhatsAppClient {
           trackId: preparedTrack?.trackId
         });
 
-        // Step 5: Optional cleanup
+        // Step 7: Share link of Reel back to that WhatsApp group
+        if (uploadResult.success && !uploadResult.skipped) {
+          const reelUrl = uploadResult.url || (uploadResult.mediaId ? `https://www.instagram.com/reel/${uploadResult.mediaId}/` : '');
+          if (reelUrl) {
+            const shareText = generateWhatsAppShareMessage(reelUrl, msgDate);
+            await this.sendMessage(remoteJid, shareText, msg);
+            logger.success(`📲 Shared Reel link to WhatsApp group "${groupName}": ${reelUrl}`);
+          }
+        }
+
+        // Step 8: Optional cleanup
         if (config.deleteTempAfterUpload && uploadResult.success) {
           deleteFile(downloadedImagePath);
           deleteFile(generatedVideoPath);
@@ -332,6 +337,41 @@ export class WhatsAppClient {
         throw err;
       }
     });
+  }
+
+  /**
+   * Sends a text message to a WhatsApp chat or group.
+   * Gracefully falls back to plain text if quoting fails.
+   */
+  public async sendMessage(
+    jid: string,
+    text: string,
+    quoted?: WAMessage
+  ): Promise<void> {
+    if (!this._sock) {
+      logger.warn('Cannot send message: WhatsApp socket is not connected.');
+      return;
+    }
+
+    try {
+      if (quoted) {
+        await this._sock.sendMessage(jid, { text }, { quoted });
+      } else {
+        await this._sock.sendMessage(jid, { text });
+      }
+    } catch (err: unknown) {
+      if (quoted) {
+        try {
+          await this._sock.sendMessage(jid, { text });
+        } catch (retryErr: unknown) {
+          const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          logger.error(`Failed to send WhatsApp message to ${jid}: ${msg}`);
+        }
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`Failed to send WhatsApp message to ${jid}: ${msg}`);
+      }
+    }
   }
 
   public get isReady(): boolean {

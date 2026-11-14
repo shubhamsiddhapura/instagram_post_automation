@@ -251,12 +251,19 @@ def main():
                     thumbnail=thumb_path
                 )
 
-            reel_url = f"https://www.instagram.com/reel/{media.code}/" if hasattr(media, "code") else ""
+            media_code = getattr(media, "code", None)
+            if not media_code and hasattr(media, "pk") and media.pk:
+                try:
+                    media_code = cl.media_pk_to_code(media.pk)
+                except Exception:
+                    media_code = None
+
+            reel_url = f"https://www.instagram.com/reel/{media_code}/" if media_code else ""
             
             resp = {
                 "status": "success",
-                "media_id": str(media.id),
-                "code": getattr(media, "code", ""),
+                "media_id": str(getattr(media, "id", "")),
+                "code": media_code or "",
                 "url": reel_url
             }
 

@@ -20,7 +20,7 @@ import config from '../config/env';
 import Logger from '../src/utils/logger';
 import { generateReelFromImage } from '../src/video/reelGenerator';
 import { frameDarshanImage } from '../src/video/imageFramer';
-import { generateReelCaption } from '../config/captions';
+import { generateReelCaption, generateWhatsAppShareMessage } from '../config/captions';
 import { getMusicQueryForDay } from '../config/music';
 import { uploadReel, prepareOfficialTrack } from '../src/instagram/uploader';
 import { downloadWhatsAppImage, isImageMessage, getImageCaption } from '../src/whatsapp/mediaHelper';
@@ -219,12 +219,16 @@ async function run(): Promise<void> {
 
   // Download image
   const imagePath = await downloadWhatsAppImage(latest);
-  sock.end(undefined);
 
-  await processAndUpload(imagePath, waCaption);
+  await processAndUpload(imagePath, waCaption, sock, latest);
 }
 
-async function processAndUpload(imagePath: string, customText: string): Promise<void> {
+async function processAndUpload(
+  imagePath: string,
+  customText: string,
+  sock?: any,
+  quotedMsg?: WAMessage
+): Promise<void> {
   // Step 1: Automatically frame raw darshan photo into official Shree MomaiDham template
   const framedImagePath = await frameDarshanImage(imagePath);
 
@@ -252,6 +256,35 @@ async function processAndUpload(imagePath: string, customText: string): Promise<
   });
 
   logger.success(`🎉 Done! Result:\n${JSON.stringify(result, null, 2)}`);
+
+  // Step 6: Share Reel link to WhatsApp group
+  if (sock && result.success && !result.skipped) {
+    const reelUrl = result.url || (result.mediaId ? `https://www.instagram.com/reel/${result.mediaId}/` : '');
+    if (reelUrl) {
+      const shareText = generateWhatsAppShareMessage(reelUrl);
+      const targetJid = quotedMsg?.key?.remoteJid || (config.targetGroupJid.includes('@g.us') ? config.targetGroupJid.split(',')[0].trim() : `${config.targetGroupJid.split(',')[0].trim()}@g.us`);
+      try {
+        if (quotedMsg) {
+          await sock.sendMessage(targetJid, { text: shareText }, { quoted: quotedMsg });
+        } else {
+          await sock.sendMessage(targetJid, { text: shareText });
+        }
+        logger.success(`📲 Shared Reel link to WhatsApp group: ${reelUrl}`);
+      } catch {
+        try {
+          await sock.sendMessage(targetJid, { text: shareText });
+          logger.success(`📲 Shared Reel link to WhatsApp group: ${reelUrl}`);
+        } catch (sendErr: unknown) {
+          const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+          logger.warn(`Could not share Reel link to WhatsApp: ${msg}`);
+        }
+      }
+    }
+  }
+
+  if (sock) {
+    sock.end(undefined);
+  }
   process.exit(0);
 }
 

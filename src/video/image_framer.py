@@ -12,7 +12,58 @@ Composites daily darshan photos into the official Shree MomaiDham template:
 import sys
 import argparse
 from pathlib import Path
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+
+def detect_darshan_crop_box(darshan_img: Image.Image) -> tuple:
+    """
+    Automatically detects Mataji's sacred red canopy and murtis
+    to determine the optimal crop boundaries:
+    - Centers Mataji's central murti and canopy horizontally (eliminating side pillars)
+    - Trims excessive empty floor at the bottom while keeping the aarti thali, diva, and top arch
+    """
+    dw, dh = darshan_img.size
+    arr = np.array(darshan_img.convert("RGB"))
+
+    # Detect sacred red canopy / garments (strong red dominance: R - G > 65 and R - B > 48)
+    r_dom = (
+        (arr[:, :, 0].astype(int) - arr[:, :, 1].astype(int) > 65)
+        & (arr[:, :, 0].astype(int) - arr[:, :, 2].astype(int) > 48)
+        & (arr[:, :, 0] > 120)
+    )
+    upper_r = r_dom[: int(dh * 0.70), :]
+    col_counts = np.sum(upper_r, axis=0)
+    active = (col_counts > (dh * 0.04)).astype(int)
+
+    diff = np.diff(np.pad(active, (1, 1), "constant"))
+    starts = np.where(diff == 1)[0]
+    ends = np.where(diff == -1)[0]
+
+    if len(starts) > 0:
+        lengths = ends - starts
+        best_idx = np.argmax(lengths)
+        left = starts[best_idx]
+        right = ends[best_idx]
+        cx = (left + right) / 2.0
+    else:
+        cx = dw / 2.0
+
+    # Symmetrical crop around detected center cx so Mataji is dead-center
+    half_w = min(cx, dw - cx)
+    min_half = dw * 0.40
+    if half_w < min_half:
+        half_w = min_half
+        cx = max(half_w, min(dw - half_w, cx))
+
+    crop_x1 = max(0, int(cx - half_w))
+    crop_x2 = min(dw, int(cx + half_w))
+
+    # Vertical framing: preserve canopy top arch and thali, trim excessive floor
+    crop_y1 = max(0, int(dh * 0.012))
+    crop_y2 = min(dh, int(dh * 0.93))
+
+    return crop_x1, crop_y1, crop_x2, crop_y2
 
 
 def frame_darshan_image(
@@ -37,12 +88,8 @@ def frame_darshan_image(
     tw, th = template.size
     dw, dh = darshan.size
 
-    # Crop Mataji photo centered: focus on Mataji murtis, canopy, and aarti thali
-    # Cut 5% from left and right to remove side pillars and keep Mataji centered
-    crop_x1 = int(dw * 0.05)
-    crop_x2 = int(dw * 0.95)
-    crop_y1 = int(dh * 0.015)
-    crop_y2 = int(dh * 0.985)
+    # Auto-detect optimal crop to center Mataji and eliminate side pillars
+    crop_x1, crop_y1, crop_x2, crop_y2 = detect_darshan_crop_box(darshan)
 
     cropped = darshan.crop((crop_x1, crop_y1, crop_x2, crop_y2))
     cw = crop_x2 - crop_x1
@@ -50,9 +97,12 @@ def frame_darshan_image(
     aspect = cw / ch
 
     # Target height between logo (y=863) and address (y=5041) on 3375x6000 template
-    # Total available = 4178px; target 3800px leaves 189px breathing room above & below
+    # Total available = 4178px; target 3800px leaves breathing room above & below
     placed_h = 3800
     placed_w = int(placed_h * aspect)
+    if placed_w > 3100:
+        placed_w = 3100
+        placed_h = int(placed_w / aspect)
 
     # Scale cropped image using high quality Lanczos
     resized = cropped.resize((placed_w, placed_h), Image.Resampling.LANCZOS)

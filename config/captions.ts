@@ -1,3 +1,4 @@
+
 /**
  * config/captions.ts
  *
@@ -135,4 +136,21 @@ export function generateReelCaption(options: CaptionOptions = {}): string {
   lines.push(CAPTION_CONFIG.hashtags);
 
   return lines.join('\n');
+}
+
+/**
+ * Message template sent to the WhatsApp group when a Reel is uploaded.
+ */
+export function generateWhatsAppShareMessage(reelUrl: string, date: Date = new Date()): string {
+  const panchang = calculateGujaratiPanchang(date);
+  return [
+    '🌺 જય મોમાઈ માં 🙏✨',
+    `🗓️ ${panchang.dateStr}, ${panchang.dayName} | તિથિ: ${panchang.tithi}`,
+    '',
+    'આજના માતાજીના દર્શન ની Instagram Reel અપલોડ થઈ ગઈ છે:',
+    `🔗 ${reelUrl}`,
+    '',
+    '👉 Reel ને Like કરો, Follow કરો અને Share કરો! 🙏✨',
+    '(Do Like, Follow & Share ❤️)'
+  ].join('\n');
 }
