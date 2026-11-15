@@ -48,5 +48,5 @@ RUN npm run build
 # Volumes for persistent session storage
 VOLUME ["/app/wa-session"]
 
-# Start the continuous automation daemon
-CMD ["npm", "start"]
+# Start the continuous automation daemon directly via node (bypasses npm wrapper for clean SIGTERM handling)
+CMD ["node", "--max-old-space-size=256", "--expose-gc", "dist/src/index.js"]
