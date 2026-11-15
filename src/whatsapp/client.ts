@@ -1,5 +1,13 @@
-import '../../scripts/patch-baileys.js';
 import fs from 'fs';
+import path from 'path';
+
+// Apply Baileys patch safely at runtime if present
+try {
+  const patchScript = path.resolve(process.cwd(), 'scripts', 'patch-baileys.js');
+  if (fs.existsSync(patchScript)) {
+    require(patchScript);
+  }
+} catch {}
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -70,11 +78,34 @@ export class WhatsAppClient {
   private _processedMessageIds = new Set<string>();
 
   /**
+   * Safely closes and removes all listeners from the active WhatsApp socket.
+   * Prevents multiple conflicting socket connections in the same process.
+   */
+  public async stop(): Promise<void> {
+    if (this._sock) {
+      try {
+        this._sock.ev.removeAllListeners('connection.update');
+        this._sock.ev.removeAllListeners('creds.update');
+        this._sock.ev.removeAllListeners('messages.upsert');
+        this._sock.ev.removeAllListeners('messaging-history.set');
+        this._sock.end(undefined);
+      } catch {}
+      this._sock = null;
+    }
+    this._isReady = false;
+  }
+
+  /**
    * Initializes Baileys connection and starts event listening.
    */
   public async start(): Promise<void> {
     if (this._isReconnecting) return;
     this._isReconnecting = true;
+
+    // Clean up any existing socket before opening a new connection
+    if (this._sock) {
+      await this.stop();
+    }
 
     logger.info('Initializing WhatsApp connection via Baileys...');
 
@@ -128,20 +159,33 @@ export class WhatsAppClient {
           const statusCode = (lastDisconnect?.error instanceof Boom)
             ? lastDisconnect.error.output.statusCode
             : null;
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
           logger.warn(`WhatsApp connection closed (Status code: ${statusCode || 'unknown'}).`);
 
-          if (shouldReconnect) {
-            logger.info('Reconnecting in 5 seconds...');
-            setTimeout(() => {
-              this._isReconnecting = false;
-              this.start();
-            }, 5000);
-          } else {
-            logger.error('WhatsApp session logged out. Please delete ./wa-session and scan QR again.');
+          // Code 440: Connection Replaced by another active instance
+          if (statusCode === DisconnectReason.connectionReplaced) {
+            logger.error('❌ Connection Replaced (Code 440): Another instance (e.g. running on your laptop while also deployed on Render) has connected with this WhatsApp session.');
+            logger.error('⚠️ IMPORTANT: WhatsApp strictly permits ONLY ONE active connection per session. To prevent WhatsApp from revoking your device, please stop the other instance!');
             this._isReconnecting = false;
+            await this.stop();
+            return;
           }
+
+          // Code 401: Logged Out
+          if (statusCode === DisconnectReason.loggedOut) {
+            logger.error('❌ WhatsApp session logged out permanently by user or server. Please delete ./wa-session, re-scan QR code, and update WA_SESSION_DATA.');
+            this._isReconnecting = false;
+            await this.stop();
+            return;
+          }
+
+          // Temporary network glitch / restartRequired (515) / timeout (408)
+          logger.info(`Cleaning up socket and reconnecting in 5 seconds (Status: ${statusCode})...`);
+          await this.stop();
+          setTimeout(() => {
+            this._isReconnecting = false;
+            this.start();
+          }, 5000);
         }
 
         if (connection === 'open') {
@@ -159,9 +203,10 @@ export class WhatsAppClient {
         }
       });
 
-      // Listen for history sync (e.g. if container restarted or reconnected during morning window)
+      // Listen for history sync (only process recent messages to prevent memory spike on fresh start)
       this._sock.ev.on('messaging-history.set', async ({ messages }) => {
-        for (const msg of messages) {
+        const recent = messages.slice(-5);
+        for (const msg of recent) {
           await this._handleIncomingMessage(msg);
         }
       });
@@ -325,10 +370,27 @@ export class WhatsAppClient {
           }
         }
 
-        // Step 8: Optional cleanup
-        if (config.deleteTempAfterUpload && uploadResult.success) {
-          deleteFile(downloadedImagePath);
-          deleteFile(generatedVideoPath);
+        // Step 8: Comprehensive cleanup & memory optimization
+        if (uploadResult.success) {
+          if (config.deleteTempAfterUpload) {
+            deleteFile(downloadedImagePath);
+            deleteFile(generatedVideoPath);
+          }
+          // Always clean up intermediate framed image and audio to save RAM/disk
+          if (framedImagePath && framedImagePath !== downloadedImagePath) {
+            deleteFile(framedImagePath);
+          }
+          if (preparedTrack?.audioPath) {
+            deleteFile(preparedTrack.audioPath);
+          }
+        }
+
+        // Free memory immediately via V8 garbage collector if exposed
+        if (typeof (global as any).gc === 'function') {
+          try {
+            (global as any).gc();
+            logger.info('🧹 Explicit garbage collection executed.');
+          } catch {}
         }
 
       } catch (err: unknown) {

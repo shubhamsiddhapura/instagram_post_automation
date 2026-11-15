@@ -106,15 +106,18 @@ export function generateReelFromImage(imagePath: string, options: ReelOptions = 
 
     command.complexFilter(filterParts);
 
-    // Output video & audio mapping
+    // Output video & audio mapping (Optimized for low-RAM cloud instances like Render 512MB)
     const outputOptions = [
       '-map [outv]',
       '-c:v libx264',
-      '-preset medium',
-      '-crf 21',
+      '-preset veryfast',
+      '-threads 2',
+      '-crf 22',
       '-pix_fmt yuv420p',
       '-r 30',
       `-t ${duration}`,
+      '-maxrate 4M',
+      '-bufsize 2M',
       '-movflags +faststart'
     ];
 

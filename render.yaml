@@ -22,3 +22,5 @@ services:
         value: "15"
       - key: DELETE_TEMP_AFTER_UPLOAD
         value: "true"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=256 --expose-gc"

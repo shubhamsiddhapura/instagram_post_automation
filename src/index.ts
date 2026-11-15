@@ -17,12 +17,18 @@ function startHealthServer(): http.Server {
 
     if (url === '/ping' || url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
+      const mem = process.memoryUsage();
       res.end(
         JSON.stringify({
           status: 'healthy',
           service: 'momaidham-automation',
           whatsappConnected: waClient?.isReady ?? false,
           uptimeSeconds: Math.floor(process.uptime()),
+          memory: {
+            rssMB: Math.round(mem.rss / 1024 / 1024),
+            heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+            heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024)
+          },
           currentTime: new Date().toISOString(),
           targetGroup: config.targetGroupJid,
           darshanWindow: `${config.darshanStartHour}:00 AM - ${config.darshanEndHour}:00 PM`,
@@ -147,9 +153,12 @@ async function main(): Promise<void> {
   waClient = new WhatsAppClient();
   await waClient.start();
 
-  // Handle graceful shutdown
-  const handleExit = () => {
+  // Handle graceful shutdown (releases WhatsApp socket before container termination)
+  const handleExit = async () => {
     logger.info('Shutting down gracefully...');
+    if (waClient) {
+      await waClient.stop();
+    }
     process.exit(0);
   };
 

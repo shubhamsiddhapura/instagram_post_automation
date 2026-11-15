@@ -20,11 +20,14 @@ ENV VIRTUAL_ENV=/app/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
+# Enforce Node.js memory safety for Render 512MB RAM limit
+ENV NODE_OPTIONS="--max-old-space-size=256 --expose-gc"
+
 # Install Python requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir "moviepy==2.2.1" "pillow"
+    pip install --no-cache-dir "pillow"
 
 # Copy package files and install Node.js dependencies
 COPY package*.json ./
