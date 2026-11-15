@@ -6,6 +6,7 @@ Memory-Optimized Compositing Engine:
 - Automatically detects Mataji's sacred red canopy and idols via a lightweight thumbnail preview (<1MB RAM)
 - Operates directly at native 1080x1920 Instagram Reel dimensions (saving ~350MB of RAM vs 3375x6000)
 - Applies rounded corners, elegant gold border, and soft elevation shadow
+- Supports pure Pillow fallback (zero dependency crash risk if numpy is not installed)
 - Forces explicit garbage collection to prevent memory spikes on cloud instances (e.g. Render 512MB RAM)
 """
 
@@ -13,14 +14,20 @@ import gc
 import sys
 import argparse
 from pathlib import Path
-import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 
 
 def detect_darshan_crop_box(darshan_img: Image.Image) -> tuple:
     """
     Detects Mataji's sacred red canopy and murtis using a lightweight downscaled preview.
     Uses less than 1MB of RAM compared to 36MB+ on full-resolution raw array.
+    Works seamlessly with NumPy or pure Pillow fallback.
     """
     dw, dh = darshan_img.size
 
@@ -28,31 +35,52 @@ def detect_darshan_crop_box(darshan_img: Image.Image) -> tuple:
     preview_h = 600
     scale = preview_h / float(dh)
     preview_w = max(1, int(dw * scale))
+    upper_h = int(preview_h * 0.70)
+    col_counts = [0] * preview_w
 
-    thumb = darshan_img.resize((preview_w, preview_h), Image.Resampling.BILINEAR)
-    arr = np.array(thumb.convert("RGB"))
+    thumb = darshan_img.resize((preview_w, preview_h), Image.Resampling.BILINEAR).convert("RGB")
+
+    if HAS_NUMPY:
+        arr = np.array(thumb)
+        r_dom = (
+            (arr[:, :, 0].astype(int) - arr[:, :, 1].astype(int) > 65)
+            & (arr[:, :, 0].astype(int) - arr[:, :, 2].astype(int) > 48)
+            & (arr[:, :, 0] > 120)
+        )
+        upper_r = r_dom[:upper_h, :]
+        col_counts = np.sum(upper_r, axis=0).tolist()
+        del arr, r_dom, upper_r
+    else:
+        # Pure Pillow fallback (takes ~50ms, requires zero third-party packages)
+        pixels = thumb.load()
+        for y in range(upper_h):
+            for x in range(preview_w):
+                r, g, b = pixels[x, y]
+                if (r - g > 65) and (r - b > 48) and (r > 120):
+                    col_counts[x] += 1
+
     del thumb
-
-    # Detect sacred red canopy / garments (strong red dominance: R - G > 65 and R - B > 48)
-    r_dom = (
-        (arr[:, :, 0].astype(int) - arr[:, :, 1].astype(int) > 65)
-        & (arr[:, :, 0].astype(int) - arr[:, :, 2].astype(int) > 48)
-        & (arr[:, :, 0] > 120)
-    )
-    upper_r = r_dom[: int(preview_h * 0.70), :]
-    col_counts = np.sum(upper_r, axis=0)
-    active = (col_counts > (preview_h * 0.04)).astype(int)
-
-    del arr, r_dom, upper_r
     gc.collect()
 
-    diff = np.diff(np.pad(active, (1, 1), "constant"))
-    starts = np.where(diff == 1)[0]
-    ends = np.where(diff == -1)[0]
+    threshold = preview_h * 0.04
+    active = [1 if c > threshold else 0 for c in col_counts]
 
-    if len(starts) > 0:
-        lengths = ends - starts
-        best_idx = np.argmax(lengths)
+    starts = []
+    ends = []
+    in_active = False
+    for i, val in enumerate(active):
+        if val == 1 and not in_active:
+            starts.append(i)
+            in_active = True
+        elif val == 0 and in_active:
+            ends.append(i)
+            in_active = False
+    if in_active:
+        ends.append(len(active))
+
+    if starts and ends:
+        lengths = [e - s for s, e in zip(starts, ends)]
+        best_idx = lengths.index(max(lengths))
         left = starts[best_idx]
         right = ends[best_idx]
         cx_preview = (left + right) / 2.0

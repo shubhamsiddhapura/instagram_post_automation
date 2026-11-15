@@ -80,9 +80,9 @@ export function generateReelFromImage(imagePath: string, options: ReelOptions = 
         `-t ${duration}`
       ]);
 
-    // 2. Audio input (if available)
+    // 2. Audio input (if available) - read exact duration to avoid infinite stream loop memory bloat
     if (audioTrack) {
-      const audioInputOpts: string[] = ['-stream_loop -1'];
+      const audioInputOpts: string[] = [`-t ${duration}`];
       if (options.audioStartTime && options.audioStartTime > 0) {
         audioInputOpts.unshift(`-ss ${options.audioStartTime}`);
       }
@@ -91,33 +91,29 @@ export function generateReelFromImage(imagePath: string, options: ReelOptions = 
         .inputOptions(audioInputOpts);
     }
 
-    // 3. Complex filter:
-    // If the image is already framed with the official template (1080x1920), render it directly without blur!
-    // Otherwise, use split + boxblur background.
+    // 3. Ultra-low-memory filter graph:
+    // If framed with official template (1080x1920), render directly.
+    // If raw fallback, letterbox cleanly with dark background (ZERO cpu/memory overhead vs heavy boxblur)
     const isFramedTemplate = path.basename(imagePath).toLowerCase().includes('framed');
     const filterParts = isFramedTemplate
       ? [`[0:v]scale=${width}:${height}[outv]`]
-      : [
-          `[0:v]split=2[bg_raw][fg_raw]`,
-          `[bg_raw]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=25:5,colorchannelmixer=aa=1:rr=0.75:gg=0.75:bb=0.75[bg]`,
-          `[fg_raw]scale=w=1040:h=1480:force_original_aspect_ratio=decrease[fg]`,
-          `[bg][fg]overlay=(W-w)/2:(H-h)/2[outv]`
-        ];
+      : [`[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=0x0a0a0a[outv]`];
 
     command.complexFilter(filterParts);
 
-    // Output video & audio mapping (Optimized for low-RAM cloud instances like Render 512MB)
+    // Output video & audio mapping (Optimized strictly for 512MB RAM cloud tiers)
     const outputOptions = [
       '-map [outv]',
       '-c:v libx264',
-      '-preset veryfast',
-      '-threads 2',
-      '-crf 22',
+      '-preset ultrafast',
+      '-tune stillimage',
+      '-threads 1',
+      '-crf 23',
       '-pix_fmt yuv420p',
       '-r 30',
       `-t ${duration}`,
-      '-maxrate 4M',
-      '-bufsize 2M',
+      '-maxrate 2M',
+      '-bufsize 1M',
       '-movflags +faststart'
     ];
 
@@ -133,15 +129,22 @@ export function generateReelFromImage(imagePath: string, options: ReelOptions = 
       );
     }
 
+    let lastLoggedSec = -1;
     (command as any)
       .outputOptions(outputOptions)
       .output(outputPath)
       .on('start', () => {
         logger.info(`FFmpeg process started`);
       })
-      .on('progress', (progress: { percent?: number }) => {
-        if (progress.percent) {
-          logger.info(`Rendering progress: ${Math.round(progress.percent)}%`);
+      .on('progress', (progress: { percent?: number; timemark?: string }) => {
+        if (progress.timemark) {
+          const parts = progress.timemark.split(':');
+          const totalSec = parseInt(parts[0] || '0', 10) * 3600 + parseInt(parts[1] || '0', 10) * 60 + parseFloat(parts[2] || '0');
+          if (totalSec - lastLoggedSec >= 3 || totalSec >= duration) {
+            lastLoggedSec = totalSec;
+            const pct = Math.min(100, Math.round((totalSec / duration) * 100));
+            logger.info(`Rendering progress: ${pct}% (${progress.timemark} / ${duration}s)`);
+          }
         }
       })
       .on('end', () => {

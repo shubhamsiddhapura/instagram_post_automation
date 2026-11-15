@@ -149,8 +149,8 @@ def main():
             cl = get_client(session_file, username, password, args.proxy)
             tracks = cl.search_music(query)
             if not tracks:
-                sys.stderr.write(f"No tracks found for '{query}', falling back to 'Momai Maa'\n")
-                tracks = cl.search_music("Momai Maa")
+                sys.stderr.write(f"No tracks found for '{query}', falling back to 'Jay Momai Maa'\n")
+                tracks = cl.search_music("Jay Momai Maa")
 
             if not tracks:
                 print_json_response({
@@ -159,7 +159,13 @@ def main():
                 })
                 sys.exit(1)
 
-            selected_track = random.choice(tracks[:3])
+            # Filter out non-devotional Bollywood tracks (e.g. Kailash Kher's "Mumma")
+            devotional_tracks = [
+                t for t in tracks
+                if not any(bad in getattr(t, "title", "").lower() for bad in ["mumma", "meri maa", "chanda hai", "lukka chuppi", "taare zameen"])
+            ]
+            final_pool = devotional_tracks if devotional_tracks else tracks
+            selected_track = random.choice(final_pool[:3])
             dl_url = str(getattr(selected_track, "progressive_download_url", None) or getattr(selected_track, "fast_start_progressive_download_url", None) or "")
             
             start_time = 0.0
@@ -215,11 +221,17 @@ def main():
                     if not tracks:
                         tracks = cl.search_music("Momai Maa")
                     if tracks:
+                        devotional_tracks = [
+                            t for t in tracks
+                            if not any(bad in getattr(t, "title", "").lower() for bad in ["mumma", "meri maa", "chanda hai", "lukka chuppi", "taare zameen"])
+                        ]
+                        final_pool = devotional_tracks if devotional_tracks else tracks
+
                         if args.track_id:
-                            matched = [t for t in tracks if str(getattr(t, "id", "")) == str(args.track_id)]
-                            selected_track = matched[0] if matched else tracks[0]
+                            matched = [t for t in final_pool if str(getattr(t, "id", "")) == str(args.track_id)]
+                            selected_track = matched[0] if matched else final_pool[0]
                         else:
-                            selected_track = random.choice(tracks[:3])
+                            selected_track = random.choice(final_pool[:3])
                         sys.stderr.write(f"Found Instagram official track: '{selected_track.title}' by {selected_track.display_artist}\n")
                     else:
                         sys.stderr.write(f"No Instagram tracks found for query: '{music_query}'. Uploading without track metadata.\n")
